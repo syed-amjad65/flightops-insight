@@ -1,0 +1,27 @@
+# Databricks Asset Bundle template. Validate with `databricks bundle validate`.
+bundle:
+  name: flightops-insight
+
+variables:
+  catalog:
+    default: flightops
+  schema:
+    default: gold
+  wheel_path:
+    default: /Volumes/flightops/libraries/flightops_insight-0.1.0-py3-none-any.whl
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://your-workspace.cloud.databricks.com
+    variables:
+      catalog: flightops_dev
+  prod:
+    workspace:
+      host: https://your-workspace.cloud.databricks.com
+    variables:
+      catalog: flightops_prod

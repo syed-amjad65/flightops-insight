@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Data and generated artifacts (keep directory READMEs and tiny samples)
+data/raw/*
+!data/raw/README.md
+data/processed/*
+!data/processed/README.md
+data/synthetic/*
+!data/synthetic/README.md
+artifacts/*
+!artifacts/README.md
+reports/figures/*
+!reports/figures/README.md
+reports/metrics/*
+!reports/metrics/README.md
+reports/optimization/*
+!reports/optimization/README.md
+reports/logs/*
+reports/*.pptx
+reports/*.xlsx
+
+# Large model/data formats that should never be committed
+*.parquet
+*.duckdb
+*.joblib
+*.pkl
+*.pt
+*.pth
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+.streamlit/secrets.toml

@@ -1,0 +1,207 @@
+# ============================================================================
+# FlightOps Insight - central configuration
+# All tunable parameters live here. Code never hard-codes cost or model values.
+# ============================================================================
+project:
+  name: "FlightOps Insight"
+  seed: 42
+  # BTS timestamps are local airport times. We keep them as naive local times
+  # and derive durations; no cross-airport UTC conversion is required for the
+  # features used here. Documented in docs/limitations.md.
+  random_seed_note: "Every stochastic component receives this seed."
+
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  data_synthetic: "data/synthetic"
+  artifacts: "artifacts"
+  models: "artifacts/models"
+  encoders: "artifacts/encoders"
+  reports: "reports"
+  figures: "reports/figures"
+  metrics: "reports/metrics"
+  optimization: "reports/optimization"
+  docs: "docs"
+
+data:
+  otp:
+    # "bts" uses the public BTS On-Time Performance extract.
+    # "synthetic" is a fully documented fallback with the same canonical schema.
+    source: "bts"
+    year: 2024
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    base_url: "https://transtats.bts.gov/PREZIP/On_Time_Reporting_Carrier_On_Time_Performance_1987_present_{year}_{month}.zip"
+    parquet: "data/processed/otp_flights.parquet"
+    duckdb: "data/processed/flightops.duckdb"
+    # Optional cap for quick runs; null = use everything.
+    max_rows: null
+    # Minimum scheduled departures per route-hour before a route-hour rate is used.
+    min_route_hour_flights: 30
+  rul:
+    source: "cmapss"
+    subset: "FD001"
+    # Public mirrors used only if data/raw/train_FD001.txt is absent.
+    mirror_base: "https://raw.githubusercontent.com/edwardzjl/CMAPSSData/master/"
+    raw_dir: "data/raw"
+    parquet: "data/processed/cmapss_fd001.parquet"
+  synthetic:
+    n_flights: 250000
+    n_aircraft: 30
+    start_date: "2026-11-09"
+    horizon_days: 14
+
+split:
+  # Strictly time-based: later months are never used to fit or calibrate.
+  train_months: [1, 2, 3, 4, 5, 6, 7, 8]
+  val_months: [9, 10]
+  test_months: [11, 12]
+
+otp:
+  target: "dep_del15"
+  delay_threshold_min: 15
+  # Prediction is assumed to be made this many minutes before scheduled departure.
+  # Inbound-flight actuals are only used when they were observable by this cutoff.
+  prediction_cutoff_min: 90
+  min_turnaround_min: 20
+  max_turnaround_min: 720
+  # Rows with fewer than this many flights in a route-hour are pooled.
+  unseen_category: "__UNSEEN__"
+  lgbm:
+    n_estimators: 600
+    learning_rate: 0.05
+    num_leaves: 127
+    min_child_samples: 150
+    subsample: 0.9
+    subsample_freq: 1
+    colsample_bytree: 0.85
+    reg_lambda: 1.0
+    n_jobs: -1
+  logistic:
+  logistic:
+    C: 0.5
+    max_iter: 1000              # 400 hit the iteration cap in the first full run
+    solver: "saga"
+  calibration: "isotonic"        # isotonic | sigmoid | none
+  alert_threshold: 0.50          # default; app allows override
+  threshold_costs:
+    # Cost of missing a delay vs. the cost of an unnecessary intervention.
+    # Used only to choose an operating threshold; not an audited P&L figure.
+    false_negative_usd: 4500
+    false_positive_usd: 250
+  shap_sample_size: 6000
+  business_case:
+    # Planning assumptions, not audited airline actuals. All are configurable.
+    intervention_cost_usd_per_flight: 250
+    prevention_rate: 0.10          # base case share of flagged delays assumed preventable
+    prevention_scenarios: [0.05, 0.10, 0.20]
+    delay_cost_usd_per_minute: 85
+    passenger_reaccommodation_usd: 1200
+    target_flag_rate: 0.10         # top-decile risk targeting scenario
+
+rul:
+  max_rul: 125
+  window: 30
+  val_fraction: 0.20
+  alert_threshold_cycles: 20
+  critical_threshold_cycles: 10
+  watch_threshold_cycles: 40
+  cost:
+    unscheduled_removal_usd: 250000
+    early_removal_usd: 75000
+    # Sensitivity range applied to both cost figures.
+    sensitivity_pct: [0.5, 0.75, 1.0, 1.25, 1.5]
+  lstm:
+    hidden_size: 64
+    num_layers: 2
+    dropout: 0.2
+    epochs: 80
+    batch_size: 128
+    learning_rate: 0.001
+    weight_decay: 0.00001
+    patience: 12
+  xgboost:
+    n_estimators: 500
+    max_depth: 4
+    learning_rate: 0.04
+    subsample: 0.9
+    colsample_bytree: 0.9
+    reg_lambda: 1.0
+  conformal_alpha: 0.10
+
+optimization:
+  horizon_days: 14
+  fleets:
+    A320:
+      daily_flight_hours: 9.5
+      daily_cycles: 4.5
+      min_ground_time_h: 1.0
+      a_check_interval_fh: 500
+      c_check_interval_fh: 4000
+      a_check_duration_h: 8
+      c_check_duration_h: 36
+      seats: 180
+    B737:
+      daily_flight_hours: 9.0
+      daily_cycles: 4.2
+      min_ground_time_h: 1.0
+      a_check_interval_fh: 500
+      c_check_interval_fh: 4000
+      a_check_duration_h: 8
+      c_check_duration_h: 36
+      seats: 172
+    E190:
+      daily_flight_hours: 7.5
+      daily_cycles: 4.8
+      min_ground_time_h: 0.75
+      a_check_interval_fh: 400
+      c_check_interval_fh: 3500
+      a_check_duration_h: 6
+      c_check_duration_h: 30
+      seats: 100
+  hangars:
+    - {name: "H1", base: "ATL", fleets: ["A320", "B737"], c_check_capable: true}
+    - {name: "H2", base: "DFW", fleets: ["B737", "E190"], c_check_capable: true}
+    - {name: "H3", base: "ORD", fleets: ["A320", "E190"], c_check_capable: false}
+  slots_per_hangar_per_day: 1
+  a_check_window: {start_hour: 20, end_hour: 4}    # overnight
+  c_check_window: {start_hour: 6, end_hour: 18}
+  # Cost of pulling an aircraft out of service for a day (lost margin +
+  # reaccommodation), charged per affected flying day.
+  disruption_cost_usd_per_day: 18000
+  early_maintenance_cost_usd_per_day: 2500
+  aog_risk_penalty_usd_per_day: 30000
+  unassigned_penalty_usd: 400000
+  solver_time_limit_s: 20
+  solver_workers: 8
+  scenarios:
+    baseline_greedy: true
+    hangar_closure: "H3"
+    rul_stress_pct: 0.25
+    demand_surge_pct: 0.10
+  sensitivity_penalties: [15000, 22500, 30000, 45000, 60000]
+
+app:
+  title: "FlightOps Insight"
+  cache_ttl_seconds: 600
+  max_table_rows: 200
+
+# Live flight tracking (OpenSky Network public ADS-B API).
+# Anonymous access is rate limited; set OPENSKY_ACCESS_TOKEN (or
+# OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET) for OAuth2 and higher limits.
+live_tracking:
+  provider: "opensky"
+  default_region: "India"
+  refresh_seconds: 60
+  request_timeout_s: 20
+  allow_demo_fallback: true
+  max_aircraft_display: 1500
+  # Rectangular query windows: lamin/lomin/lamax/lomax in decimal degrees.
+  # "Global" is always available from the code defaults and is not listed here.
+  regions:
+    India: {lamin: 6.0, lomin: 68.0, lamax: 36.0, lomax: 98.0}
+    United States: {lamin: 24.0, lomin: -125.0, lamax: 50.0, lomax: -66.0}
+    Europe: {lamin: 35.0, lomin: -12.0, lamax: 72.0, lomax: 45.0}
+
+sql:
+  queries_file: "src/flightops/sql/queries.sql"
+  schema_file: "src/flightops/sql/schema.sql"

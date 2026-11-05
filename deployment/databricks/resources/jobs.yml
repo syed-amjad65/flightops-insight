@@ -1,0 +1,76 @@
+resources:
+  jobs:
+    flightops_train_otp:
+      name: flightops-train-otp
+      schedule:
+        quartz_cron_expression: "0 0 3 ? * SUN"
+        timezone_id: UTC
+      email_notifications:
+        on_failure:
+          - data-science@example.com
+      tasks:
+        - task_key: train_otp
+          python_wheel_task:
+            package_name: flightops_insight
+            entry_point: flightops-train-otp
+            parameters: ["--force"]
+          libraries:
+            - whl: ${var.wheel_path}
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              project: flightops-insight
+
+    flightops_train_rul:
+      name: flightops-train-rul
+      schedule:
+        quartz_cron_expression: "0 30 3 1 * ?"
+        timezone_id: UTC
+      tasks:
+        - task_key: train_rul
+          python_wheel_task:
+            package_name: flightops_insight
+            entry_point: flightops-train-rul
+            parameters: ["--force"]
+          libraries:
+            - whl: ${var.wheel_path}
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+
+    flightops_optimize:
+      name: flightops-optimize-maintenance
+      schedule:
+        quartz_cron_expression: "0 0 5 * * ?"
+        timezone_id: UTC
+      tasks:
+        - task_key: optimize
+          python_wheel_task:
+            package_name: flightops_insight
+            entry_point: flightops-run-optimization
+            parameters: ["--force"]
+          libraries:
+            - whl: ${var.wheel_path}
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+
+    flightops_score_otp:
+      name: flightops-score-otp
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?"
+        timezone_id: UTC
+      tasks:
+        - task_key: score
+          spark_python_task:
+            python_file: ../deployment/databricks/score_otp.py
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0

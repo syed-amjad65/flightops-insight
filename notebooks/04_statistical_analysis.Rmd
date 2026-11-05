@@ -1,0 +1,250 @@
+---
+title: "FlightOps Insight - Statistical Analysis"
+subtitle: "OTP hypothesis tests and C-MAPSS time-to-critical survival analysis"
+author: "FlightOps Insight prototype"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: flatly
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 8.5, fig.height = 4.2)
+library(survival)
+options(digits = 4)
+metrics_dir <- file.path("..", "reports", "metrics")
+```
+
+# Purpose and scope
+
+This notebook tests whether the descriptive patterns used in the Streamlit app are
+statistically distinguishable from noise, and it models the time until an engine
+enters the 20-cycle critical zone in NASA C-MAPSS FD001.
+
+All inputs are public data or deterministic extracts from this repository. The tests
+are associational. They do not identify causal effects, and the C-MAPSS data are
+simulated degradation trajectories rather than a fleet feed.
+
+# OTP hypothesis tests
+
+## Peak versus off-peak delay risk
+
+The app claims that delay risk rises through the operating day. We compare the
+15:00-20:00 block with the 06:00-09:00 block using a one-sided two-proportion test.
+
+```{r peak-test}
+hourly <- read.csv(file.path(metrics_dir, "r_otp_hourly.csv"))
+peak <- subset(hourly, dep_hour >= 15 & dep_hour <= 20)
+off <- subset(hourly, dep_hour >= 6 & dep_hour <= 9)
+
+peak_n <- sum(peak$flights)
+off_n <- sum(off$flights)
+peak_x <- round(sum(peak$flights * peak$delay_rate))
+off_x <- round(sum(off$flights * off$delay_rate))
+
+c(peak_flights = peak_n, peak_delayed = peak_x, peak_rate = peak_x / peak_n,
+  off_flights = off_n, off_delayed = off_x, off_rate = off_x / off_n)
+
+prop.test(c(peak_x, off_x), c(peak_n, off_n), alternative = "greater")
+```
+
+```{r peak-plot}
+plot(hourly$dep_hour, hourly$delay_rate, type = "b", pch = 19, col = "#b91c1c",
+     xlab = "Scheduled departure hour", ylab = "Share of departures >15 min late",
+     main = "Delay rate by scheduled departure hour (BTS 2024)")
+abline(v = c(6, 9), col = "#0f766e", lty = 2)
+abline(v = c(15, 20), col = "#b91c1c", lty = 2)
+grid(col = "grey85")
+```
+
+**Reading.** The afternoon rate is 28.6% versus 10.7% in the morning block
+(a difference of about 17.8 percentage points, roughly 2.7x). The one-sided test
+rejects equality with p < 2.2e-16. With millions of flights the p-value is not the
+interesting part; the effect size and its stability across months are.
+
+## Turnaround bucket and departure delay
+
+Short scheduled turnarounds are associated with higher delay rates. We test
+independence of delay status and turnaround bucket with a chi-square test on the
+aggregated 2 x k table.
+
+```{r turnaround-test}
+turn <- read.csv(file.path(metrics_dir, "r_otp_turnaround.csv"))
+turn$turn_bucket <- factor(turn$turn_bucket,
+  levels = c("< 40 min", "40-59 min", "60-89 min", "90-149 min", "150+ min", "No inbound link"))
+turn <- turn[order(turn$turn_bucket), ]
+turn$delay_rate <- turn$delayed / turn$flights
+turn
+
+table_2k <- as.matrix(turn[, c("delayed", "on_time")])
+rownames(table_2k) <- turn$turn_bucket
+chisq.test(table_2k)
+```
+
+```{r turnaround-plot}
+bp <- barplot(turn$delay_rate, names.arg = turn$turn_bucket, las = 2,
+              col = "#0f766e", border = NA,
+              ylab = "Delay rate", main = "Departure delay rate by scheduled turnaround")
+text(bp, turn$delay_rate, labels = sprintf("%.1f%%", 100 * turn$delay_rate),
+     pos = 3, cex = 0.85)
+```
+
+**Reading.** The chi-square statistic is 195,119 on 5 degrees of freedom
+(p < 2.2e-16), so delay status is not independent of the turnaround bucket. The
+effect size, not the p-value alone, is what matters for operations: the shortest
+bucket carries the highest delay rate in the data.
+
+## Seasonality: daily delay rate by month
+
+We use daily network delay rates and a Kruskal-Wallis test because daily rates are
+not plausibly normal and the month groups differ in size.
+
+```{r season-test}
+daily <- read.csv(file.path(metrics_dir, "r_otp_daily.csv"))
+daily$month <- factor(daily$month)
+kruskal.test(delay_rate ~ month, data = daily)
+
+aggregate(delay_rate ~ month, data = daily, FUN = function(x) c(mean = mean(x), median = median(x), n = length(x)))
+```
+
+```{r season-plot}
+boxplot(delay_rate ~ month, data = daily, col = "#dbeafe", border = "#1e3a5f",
+        xlab = "Month", ylab = "Daily network delay rate",
+        main = "Daily delay-rate distribution by month")
+```
+
+**Reading.** Seasonality is material: July is the worst month and October the best
+in 2024. The Kruskal-Wallis statistic is 162.6 on 11 degrees of freedom
+(p < 2.2e-16), so at least one month differs. The box plot shows the practical
+spread and the winter/summer tails.
+
+## Late inbound aircraft
+
+The app describes late inbound aircraft as a leading indicator. We compare
+"inbound 60+ minutes late" with "inbound early" using a one-sided proportion test.
+
+```{r inbound-test}
+inbound <- read.csv(file.path(metrics_dir, "r_otp_inbound.csv"))
+late <- subset(inbound, segment == "Inbound 60+ min late")
+early <- subset(inbound, segment == "Inbound early")
+c(late_rate = late$delayed / late$flights, early_rate = early$delayed / early$flights)
+prop.test(c(late$delayed, early$delayed), c(late$flights, early$flights), alternative = "greater")
+```
+
+**Reading.** Flights whose inbound aircraft was already 60+ minutes late depart late
+16.6% of the time versus 9.4% when the inbound was early (one-sided p < 2.2e-16).
+The direction is consistent with a late-aircraft propagation mechanism, but the
+comparison is confounded by scheduled turnaround buffer, route mix and carrier
+operating practices. The app therefore calls this an association, not a causal
+effect.
+
+# C-MAPSS survival analysis
+
+## Event definition and censoring
+
+The event is **entry into the 20-cycle critical zone**, not physical failure. This
+matches the alert threshold used by the RUL model.
+
+- Training units run to failure, so the event is observed for all 100 units.
+- Test units are truncated by NASA. If the reported true RUL is above 20, the unit
+  is censored at its last observed cycle. If the true RUL is at or below 20, the
+  crossing time is reconstructed from the reported RUL.
+
+```{r survival-data}
+surv <- read.csv(file.path(metrics_dir, "r_rul_survival.csv"))
+surv$split <- factor(surv$split, levels = c("train", "test"))
+table(surv$split, surv$event)
+summary(surv$duration)
+```
+
+## Kaplan-Meier estimate
+
+```{r km}
+km <- survfit(Surv(duration, event) ~ 1, data = surv)
+km
+summary(km, times = c(50, 100, 150, 200, 250))
+plot(km, conf.int = TRUE, col = "#0f766e", lwd = 2,
+     xlab = "Cycles since first observation", ylab = "Probability still outside the 20-cycle zone",
+     main = "Kaplan-Meier: time to the C-MAPSS critical zone")
+grid(col = "grey85")
+```
+
+**Reading.** The curve is the estimated probability that an engine has not yet
+entered the critical zone. The median time-to-critical is the cycle at which the
+curve crosses 50%. Because training and test units come from the same simulated
+fleet, pooling them increases precision; the split is retained as a covariate check
+below.
+
+## Kaplan-Meier by early-life degradation slope
+
+We split units at the median early-life slope of sensor 4 (fan inlet temperature
+proxy in this dataset) and compare curves with a log-rank test.
+
+```{r km-group}
+surv$slope_group <- ifelse(surv$slope_sensor_4 <= median(surv$slope_sensor_4),
+                           "Steeper early decline", "Flatter early decline")
+km_group <- survfit(Surv(duration, event) ~ slope_group, data = surv)
+plot(km_group, col = c("#b91c1c", "#0f766e"), lwd = 2, lty = 1,
+     xlab = "Cycles", ylab = "Probability outside the critical zone",
+     main = "Kaplan-Meier by early sensor-4 slope")
+legend("topright", legend = names(km_group$strata), col = c("#b91c1c", "#0f766e"), lwd = 2, bty = "n")
+grid(col = "grey85")
+survdiff(Surv(duration, event) ~ slope_group, data = surv)
+```
+
+**Reading.** The log-rank test is not significant (chi-square 0.5 on 1 degree of
+freedom, p = 0.50). In this dataset, the early-life sensor-4 slope does **not**
+separate time-to-critical. That is a useful negative result: a single early-life
+snapshot is not a substitute for the recent-window trajectory features used by the
+XGBoost and LSTM models.
+
+## Cox proportional hazards model
+
+The Cox model estimates the association between early-life covariates and the
+hazard of entering the critical zone. Covariates are standardised so hazard ratios
+are per one standard deviation.
+
+```{r cox}
+cox <- coxph(Surv(duration, event) ~ scale(init_sensor_11) + scale(init_sensor_4) +
+               scale(slope_sensor_4) + scale(slope_sensor_11),
+             data = surv)
+summary(cox)
+```
+
+```{r cox-ph}
+cox.zph(cox)
+```
+
+**Reading.** No covariate is individually significant at the 5% level. The largest
+point estimate is initial sensor 4 (HR 1.21 per SD, 95% CI 0.92-1.60), but the
+interval includes 1. The global proportional-hazards test is not significant
+(p = 0.14), though the initial sensor-11 term shows a local departure (p = 0.022).
+The model is illustrative and is not used by the production RUL scorer.
+
+# Conclusions
+
+- Afternoon departures carry a materially higher delay rate than morning departures;
+  the proportion test quantifies the difference and its uncertainty.
+- Delay status is not independent of scheduled turnaround length. Short turns are a
+  practical intervention point, but the data are observational.
+- Seasonality is statistically and operationally material.
+- Late inbound aircraft are associated with higher departure-delay risk, with
+  confounding from turnaround buffer and network mix.
+- In C-MAPSS, the median time to the 20-cycle zone is about 183 cycles. Early-life
+  sensor slopes did **not** separate time-to-critical (log-rank p = 0.50), and the
+  Cox covariates were not individually significant. This negative result argues
+  against using a single early-life snapshot; the production RUL models use recent
+  trajectories and achieve much lower error.
+- The survival event is a maintenance threshold, not a physical failure, and the
+  dataset is simulated. These results cannot be transferred to a fleet without
+  validation on real run-to-failure and censored service data.
+
+# Reproducibility
+
+```{r session}
+sessionInfo()
+```
