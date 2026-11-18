@@ -41,7 +41,34 @@ jobs:
             "ortools>=9.11,<10" \
             "duckdb>=1.1,<3" \
             "joblib>=1.4,<2" \
+            "streamlit>=1.39,<2" \
+            "matplotlib>=3.9,<4" \
             "pytest>=8,<10"
 
       - name: Run unit tests
         run: python -m pytest
+
+  security:
+    name: Dependency and static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install scanners
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pip-audit>=2.7,<3" "bandit>=1.7,<2"
+
+      - name: Audit declared dependencies
+        run: python -m pip_audit -r requirements.txt --progress-spinner off
+
+      - name: Static security analysis (medium and above)
+        run: python -m bandit -r src deployment -ll -q

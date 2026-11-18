@@ -1,0 +1,52 @@
+# Streamlit server and client hardening.
+# Safe for the default local/prototype deployment. See
+# SECURITY_CONFIGURATION.md (repo root) before changing bind address or hosts.
+
+[server]
+# Bind to loopback only. Change to "0.0.0.0" only behind an authenticated
+# reverse proxy, never on an untrusted network.
+address = "127.0.0.1"
+port = 8501
+headless = true
+
+# Streamlit's own cross-origin and CSRF protections (defaults, pinned here so a
+# future upgrade cannot silently loosen them).
+enableCORS = true
+corsAllowedOrigins = ["http://localhost:8501", "http://127.0.0.1:8501"]
+enableXsrfProtection = true
+
+# DNS-rebinding protection: only accept these Host headers.
+allowedHosts = ["localhost", "127.0.0.1"]
+
+# The app does not serve static files or accept uploads.
+enableStaticServing = false
+maxUploadSize = 5
+
+# Bound the websocket frame size the server will accept.
+maxMessageSize = 50
+
+# The experimental agent API lets a non-browser client drive the app over
+# HTTP (`/_stcore/agent/interact`) or as a remote MCP server. It is off by
+# default; pin it off so an upgrade or a stray CLI flag cannot silently add a
+# programmatic interaction surface next to the UI.
+enableAgentApi = false
+
+# Never trust client-supplied identity headers. Only populate this table
+# behind a proxy that strips the same headers from every inbound request;
+# otherwise it is an authentication-bypass primitive.
+trustedUserHeaders = {}
+
+# Cap the widget-state request body (MB).
+maxWidgetStateSize = 25
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Do not render Python tracebacks, paths or exception messages in the browser.
+# Full details still go to reports/logs/flightops.log.
+showErrorDetails = "none"
+toolbarMode = "minimal"
+
+[logger]
+level = "info"

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from flightops.app import auth
+from flightops.app.common import get_config
 from flightops.app.pages import (
     fleet_health,
     live_tracking,
@@ -21,6 +23,12 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
+
+    # Optional OIDC gate. When no provider is configured this is a no-op unless
+    # the deployment explicitly opts into fail-closed mode.
+    auth.require_user(get_config())
+    auth.render_identity()
+
     pages = {
         "Flight operations": [
             st.Page(overview.render, title="OTP overview", icon=":material/insights:", url_path="otp-overview"),

@@ -36,7 +36,8 @@ def build_database(cfg: Config, force: bool = False) -> Path:
     connection = duckdb.connect(str(db_path))
     try:
         connection.execute(
-            f"CREATE OR REPLACE VIEW flights AS SELECT * FROM read_parquet('{parquet.as_posix()}')"
+            # Path is a local config value, never request data.
+            f"CREATE OR REPLACE VIEW flights AS SELECT * FROM read_parquet('{parquet.as_posix()}')"  # nosec
         )
         for statement in _split_statements(schema_sql):
             if "rul_watchlist.csv" in statement and not watchlist.exists():

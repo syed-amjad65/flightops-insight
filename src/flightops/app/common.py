@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from flightops.config import Config, load_config
+from flightops.security import escape_html
 
 
 @st.cache_resource
@@ -44,11 +45,17 @@ def inject_css() -> None:
 
 def page_header(title: str, subtitle: str) -> None:
     st.title(title)
-    st.markdown(f'<div class="subtle">{subtitle}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="subtle">{escape_html(subtitle)}</div>', unsafe_allow_html=True)
     st.write("")
 
 
 def so_what(text: str) -> None:
+    """Render a call-out box.
+
+    ``text`` is trusted, repository-authored markup (it may contain ``<b>``).
+    Any value derived from external data must be escaped with
+    :func:`flightops.security.escape_html` before interpolation.
+    """
     st.markdown(
         f'<div class="so-what"><b>So what / recommended action</b><br>{text}</div>',
         unsafe_allow_html=True,
@@ -56,7 +63,7 @@ def so_what(text: str) -> None:
 
 
 def assumption_box(text: str) -> None:
-    st.markdown(f'<div class="assumption">{text}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="assumption">{escape_html(text)}</div>', unsafe_allow_html=True)
 
 
 def money(value: float, digits: int = 0) -> str:

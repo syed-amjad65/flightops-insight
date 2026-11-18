@@ -85,7 +85,7 @@ HOLIDAY_WINDOWS_2024: tuple[tuple[date, date], ...] = (
 
 def _stable_uniform(key: str) -> float:
     """Deterministic uniform [0, 1) from a string, independent of process seed."""
-    digest = hashlib.md5(key.encode("utf-8")).hexdigest()
+    digest = hashlib.md5(key.encode("utf-8"), usedforsecurity=False).hexdigest()
     return int(digest[:12], 16) / float(16**12)
 
 

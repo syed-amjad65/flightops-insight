@@ -24,6 +24,10 @@ from flightops.live.tracking import (
     resolve_access_token,
     summarise_states,
 )
+from flightops.logging_utils import get_logger
+from flightops.security import escape_html, escape_markdown
+
+logger = get_logger("app.live_tracking")
 
 PHASE_COLORS = {
     "On ground": "#6b7280",
@@ -165,9 +169,10 @@ def _source_caption(meta: dict[str, Any]) -> None:
         f"{bounds['lomin']:.0f}–{bounds['lomax']:.0f}°E)"
     )
     if meta.get("error"):
+        logger.warning("Live tracking provider error: %s", meta["error"])
         st.warning(
-            f"OpenSky request failed: {meta['error']}. "
-            "The map below is a **demo snapshot**, not live traffic."
+            "Live provider request failed. The map below is a **demo snapshot**, "
+            "not live traffic."
         )
     elif meta["source"] == "Demo fallback":
         st.info("Showing a clearly-labelled demo snapshot because no live data is available.")
@@ -229,8 +234,9 @@ def _map(filtered: pd.DataFrame, region: Region) -> None:
             legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "x": 0},
         )
         st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
-    except Exception as exc:  # pragma: no cover - defensive UI fallback
-        st.caption(f"Map tiles unavailable ({exc}); using a geographic scatter instead.")
+    except Exception:  # pragma: no cover - defensive UI fallback
+        logger.exception("Map tile rendering failed; using geographic scatter")
+        st.caption("Map tiles are unavailable; using a geographic scatter instead.")
         fallback = px.scatter_geo(
             plot,
             lat="latitude",
@@ -308,9 +314,14 @@ def _detail(filtered: pd.DataFrame) -> None:
     age = row["position_age_s"]
     age_text = f"{age:,.0f}s" if pd.notna(age) else "unknown"
     squawk = row["squawk"] if pd.notna(row["squawk"]) else "—"
+    flight = escape_markdown(row["flight"])
+    icao24 = escape_markdown(row["icao24"])
+    country = escape_markdown(row["origin_country"])
+    phase = escape_markdown(row["phase"])
+    squawk_text = escape_markdown(squawk)
     st.caption(
-        f"Call sign **{row['flight']}** · ICAO24 `{row['icao24']}` · {row['origin_country']} · "
-        f"phase {row['phase']} · squawk {squawk} · position age {age_text}"
+        f"Call sign **{flight}** · ICAO24 `{icao24}` · {country} · "
+        f"phase {phase} · squawk {squawk_text} · position age {age_text}"
     )
     st.map(
         pd.DataFrame({"lat": [row["latitude"]], "lon": [row["longitude"]]}),
@@ -393,7 +404,7 @@ def _closing_note(filtered: pd.DataFrame, snapshot: pd.DataFrame) -> None:
         f"<b>{summary['tracked']:,} aircraft</b> are visible in this snapshot "
         f"({summary['airborne']:,} airborne, {summary['on_ground']:,} on ground) from "
         f"<b>{summary['countries']}</b> countries; the largest representation is "
-        f"<b>{busiest_country}</b>. Use the map and table to sanity-check the picture, then "
+        f"<b>{escape_html(busiest_country)}</b>. Use the map and table to sanity-check the picture, then "
         "pair it with the OTP and maintenance pages before making an operational decision. "
         "ADS-B coverage, latency and altitude are informational, not surveillance-grade."
     )

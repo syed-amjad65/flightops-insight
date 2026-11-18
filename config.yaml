@@ -184,6 +184,9 @@ app:
   title: "FlightOps Insight"
   cache_ttl_seconds: 600
   max_table_rows: 200
+  # Fail closed if no OIDC provider is configured. Keep false for a local
+  # prototype; set true for any shared or networked deployment.
+  require_auth: false
 
 # Live flight tracking (OpenSky Network public ADS-B API).
 # Anonymous access is rate limited; set OPENSKY_ACCESS_TOKEN (or

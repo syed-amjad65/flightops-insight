@@ -19,6 +19,12 @@ from flightops.logging_utils import get_logger
 
 logger = get_logger("analysis.otp")
 
+# Only these columns may be interpolated as a GROUP BY dimension. Anything else
+# is a programming error, never user input.
+_SEGMENT_DIMENSIONS = frozenset(
+    {"dep_hour", "month", "carrier", "aircraft_type", "route", "origin", "dest"}
+)
+
 
 def _save_bar(series: pd.Series, title: str, ylabel: str, path: Path, color: str = "tab:blue") -> None:
     fig, axis = plt.subplots(figsize=(8.4, 4.0))
@@ -33,21 +39,22 @@ def _save_bar(series: pd.Series, title: str, ylabel: str, path: Path, color: str
 
 
 def _segment_query(cfg: Config, dimension: str, min_flights: int = 500) -> pd.DataFrame:
-    return query_df(
-        cfg,
-        f"""
-        SELECT
-            {dimension} AS segment,
-            COUNT(*) AS flights,
-            ROUND(AVG(CASE WHEN dep_del15 IS NOT NULL THEN dep_del15 END), 4) AS delay_rate,
-            ROUND(AVG(dep_delay_min), 2) AS avg_dep_delay_min
-        FROM flights
-        WHERE {dimension} IS NOT NULL
-        GROUP BY 1
-        HAVING COUNT(*) >= {min_flights}
-        ORDER BY delay_rate DESC
-        """,
+    if dimension not in _SEGMENT_DIMENSIONS:
+        raise ValueError(f"Unsupported segment dimension: {dimension!r}")
+    # The dimension is allow-listed above; the threshold is a bound parameter.
+    statement = (
+        "SELECT "  # nosec
+        f"{dimension} AS segment, "
+        "COUNT(*) AS flights, "
+        "ROUND(AVG(CASE WHEN dep_del15 IS NOT NULL THEN dep_del15 END), 4) AS delay_rate, "
+        "ROUND(AVG(dep_delay_min), 2) AS avg_dep_delay_min "
+        "FROM flights "
+        f"WHERE {dimension} IS NOT NULL "
+        "GROUP BY 1 "
+        "HAVING COUNT(*) >= ? "
+        "ORDER BY delay_rate DESC"
     )
+    return query_df(cfg, statement, [int(min_flights)])
 
 
 def _inbound_bucket_query(cfg: Config) -> pd.DataFrame:

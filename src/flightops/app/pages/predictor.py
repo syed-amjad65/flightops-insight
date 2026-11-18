@@ -12,7 +12,10 @@ import streamlit as st
 from flightops.app.common import assumption_box, get_config, inject_css, page_header, pct, show_missing_artifact, so_what
 from flightops.app.data_access import otp_insights
 from flightops.data.aircraft import HUBS, TYPE_ATTRIBUTES, is_holiday
+from flightops.logging_utils import get_logger
 from flightops.models.otp_predict import load_predictor, risk_tier
+
+logger = get_logger("app.predictor")
 
 
 @st.cache_resource
@@ -100,9 +103,13 @@ def render() -> None:
         return
     try:
         predictor = _predictor()
-    except Exception as exc:  # pragma: no cover - UI guard
+    except Exception:  # pragma: no cover - UI guard
+        logger.exception("Failed to load the OTP model artifacts")
         page_header("Delay-risk predictor", "Score a single flight before departure")
-        st.error(f"Could not load the OTP model: {exc}")
+        st.error(
+            "The delay-risk model could not be loaded. Check the server logs or "
+            "rebuild the artifacts with `python scripts/run_all.py --skip-optimize`."
+        )
         return
 
     page_header(
