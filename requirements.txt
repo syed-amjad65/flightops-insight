@@ -24,4 +24,4 @@ pytest>=8,<10
 jupyter>=1.1
 nbformat>=5.10
 nbconvert>=7.16
-ipykernel>=6.29
+ipykernel>=7.4.0
