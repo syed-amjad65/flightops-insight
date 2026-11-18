@@ -1,5 +1,7 @@
 # FlightOps Insight
 
+[![CI](https://github.com/syed-amjad65/flightops-insight/actions/workflows/ci.yml/badge.svg)](https://github.com/syed-amjad65/flightops-insight/actions/workflows/ci.yml)
+
 A local, end-to-end decision-support prototype for airline Flight Operations and
 Continuing Airworthiness Management (CAMO). It combines:
 
@@ -105,6 +107,10 @@ The data is crowd-sourced and is **not** surveillance-grade.
 ```powershell
 python -m pytest
 ```
+
+GitHub Actions runs the same suite on Python 3.11 and 3.12 for every push and pull
+request to `main` (`.github/workflows/ci.yml`). CI installs only the test
+dependencies, so it does not download model or data artifacts.
 
 ---
 
