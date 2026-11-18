@@ -163,6 +163,30 @@ advisory can invalidate this result — hence the CI job and Dependabot.
 
 ---
 
+## 5.1 Continuous integration verification
+
+Local runs are easy to get wrong (wrong interpreter, missing dependency). The same three
+checks therefore also ran on GitHub's runners against the pushed commit
+`35898ec` — run
+[44348766454](https://github.com/syed-amjad65/flightops-insight/actions/runs/44348766454):
+
+| Job | Runner | Result |
+|---|---|---|
+| Tests (Python 3.11) | `ubuntu-latest` | **success** |
+| Tests (Python 3.12) | `ubuntu-latest` | **success** |
+| Dependency and static analysis | `ubuntu-latest` | **success** |
+
+Only non-blocking platform notices were emitted (Node 20 → 24 deprecation for
+`actions/checkout@v4` / `actions/setup-python@v5`, plus the announced `ubuntu-latest`
+image migration). The action versions were bumped to `checkout@v5` and
+`setup-python@v6` afterwards, which removes the deprecation warning.
+
+**What this proves:** the test suite, `pip-audit` and `bandit` all pass on a clean Linux
+checkout with no local state — including the cross-platform behaviour of the inline
+`# nosec` suppressions.
+
+---
+
 ## 6. Live HTTP and WebSocket tests
 
 Server started with the repository config on port 8502:
